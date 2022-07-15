@@ -1,0 +1,5 @@
+Metrics/MethodLength:
+  Max: 25
+
+Style/WordArray:
+  EnforcedStyle: percent
