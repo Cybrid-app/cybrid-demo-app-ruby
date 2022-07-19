@@ -1,0 +1,56 @@
+GEM
+  remote: https://rubygems.org/
+  specs:
+    concurrent-ruby (1.1.10)
+    cybrid_api_bank_ruby (0.24.2)
+      typhoeus (~> 1.0, >= 1.0.1)
+    cybrid_api_id_ruby (0.24.2)
+      typhoeus (~> 1.0, >= 1.0.1)
+    cybrid_api_organization_ruby (0.24.2)
+      typhoeus (~> 1.0, >= 1.0.1)
+    diff-lcs (1.5.0)
+    dotenv (2.7.6)
+    ethon (0.15.0)
+      ffi (>= 1.15.0)
+    faraday (2.3.0)
+      faraday-net_http (~> 2.0)
+      ruby2_keywords (>= 0.0.4)
+    faraday-net_http (2.0.3)
+    ffi (1.15.5)
+    i18n (1.10.0)
+      concurrent-ruby (~> 1.0)
+    jwt (2.4.1)
+    money (6.16.0)
+      i18n (>= 0.6.4, <= 2)
+    rspec (3.11.0)
+      rspec-core (~> 3.11.0)
+      rspec-expectations (~> 3.11.0)
+      rspec-mocks (~> 3.11.0)
+    rspec-core (3.11.0)
+      rspec-support (~> 3.11.0)
+    rspec-expectations (3.11.0)
+      diff-lcs (>= 1.2.0, < 2.0)
+      rspec-support (~> 3.11.0)
+    rspec-mocks (3.11.1)
+      diff-lcs (>= 1.2.0, < 2.0)
+      rspec-support (~> 3.11.0)
+    rspec-support (3.11.0)
+    ruby2_keywords (0.0.5)
+    typhoeus (1.4.0)
+      ethon (>= 0.9.0)
+
+PLATFORMS
+  x86_64-linux
+
+DEPENDENCIES
+  cybrid_api_bank_ruby
+  cybrid_api_id_ruby
+  cybrid_api_organization_ruby
+  dotenv
+  faraday
+  jwt
+  money
+  rspec (~> 3.0)
+
+BUNDLED WITH
+   2.3.13
