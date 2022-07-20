@@ -14,7 +14,6 @@ require 'faraday'
 require 'timeout'
 
 require 'cybrid_api_bank_ruby'
-require 'cybrid_api_id_ruby'
 
 require_relative 'auth'
 require_relative 'config'
@@ -26,6 +25,7 @@ LOGGER = Logger.new($stdout)
 STATE_CREATED = 'created'
 STATE_COMPLETED = 'completed'
 STATE_FAILED = 'failed'
+STATE_SETTLING = 'settling'
 STATE_VERIFIED = 'verified'
 
 class BadResultError < StandardError; end
@@ -124,15 +124,15 @@ rescue StandardError => e
   raise e
 end
 
-def get_verification_key(guid)
-  LOGGER.info('Getting verification key...')
+def list_verification_keys
+  LOGGER.info('Getting verification keys...')
 
   api_verification = CybridApiBank::VerificationKeysBankApi.new
-  verification_key = api_verification.get_verification_key(guid)
+  verification_keys = api_verification.list_verification_keys
 
-  LOGGER.info('Got verification key.')
+  LOGGER.info('Got verification keys.')
 
-  verification_key
+  verification_keys
 rescue CybridApiBank::ApiError => e
   LOGGER.error("An API error occurred when getting verification key: #{e}")
   raise e
@@ -252,8 +252,7 @@ begin
 
   timeout = Config::TIMEOUT
 
-  verification_key_guid = Config::VERIFICATION_KEY_GUID
-  verification_key = get_verification_key(verification_key_guid)
+  verification_key = list_verification_keys.objects.first
   verification_key_state = verification_key.state
   raise BadResultError, "Verification key has invalid state: #{verification_key_state}" unless verification_key_state == STATE_VERIFIED
 
@@ -292,21 +291,21 @@ begin
 
   LOGGER.info("Identity record successfully created with state: #{identity_record_state}")
 
-  quantity = Money.from_amount(5, 'BTC').cents
-  quote = create_quote(customer, 'buy', 'BTC-USD', quantity)
+  quantity = Money.from_amount(5, 'BTC')
+  quote = create_quote(customer, 'buy', 'BTC-USD', quantity.cents)
   trade = create_trade(quote)
   trade_state = trade.state
 
   timeout_message = LazyStr.new { "Trade was not executed in time. State: #{trade_state}." }
   Timeout.timeout(timeout, TimeoutError, timeout_message) do
-    final_states = [STATE_COMPLETED, STATE_FAILED]
-    until final_states.include?(trade_state)
+    final_states = [STATE_SETTLING, STATE_COMPLETED, STATE_FAILED]
+    until final_states.include?(state)
       sleep(1)
       trade = get_trade(trade.guid)
       trade_state = trade.state
     end
   end
-  raise BadResultError, "Trade has invalid state: #{trade_state}" unless trade_state == STATE_COMPLETED
+  raise BadResultError, "Trade has invalid state: #{trade_state}" unless trade_state == STATE_SETTLING
 
   LOGGER.info("Trade successfully created with state: #{trade_state}")
 
