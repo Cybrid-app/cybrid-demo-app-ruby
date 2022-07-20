@@ -36,8 +36,6 @@ Set the value of `BANK_GUID` to the GUID of your Sandbox Bank.
 
 Set the value of `APPLICATION_CLIENT_ID` and `APPLICATION_CLIENT_SECRET` to your generated API Client ID and Client Secret, respectively.
 
-Finally, set the value of `VERIFICATION_KEY_GUID`
-
 ## Execution
 
 Once your environment is configured, you can run the demo application by executing the Ruby file `app/main.rb`:
