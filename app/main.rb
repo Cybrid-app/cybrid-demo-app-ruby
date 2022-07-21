@@ -1,3 +1,4 @@
+#!/usr/bin/env ruby
 # frozen_string_literal: true
 
 # 1. Create a customer
@@ -22,6 +23,7 @@ require_relative 'util'
 
 LOGGER = Logger.new($stdout)
 
+STATE_CREATED = 'created'
 STATE_COMPLETED = 'completed'
 STATE_FAILED = 'failed'
 STATE_VERIFIED = 'verified'
@@ -252,47 +254,61 @@ begin
 
   verification_key_guid = Config::VERIFICATION_KEY_GUID
   verification_key = get_verification_key(verification_key_guid)
-  state = verification_key.state
-  raise BadResultError, "Verification key has invalid state: #{state}" unless state == STATE_VERIFIED
+  verification_key_state = verification_key.state
+  raise BadResultError, "Verification key has invalid state: #{verification_key_state}" unless verification_key_state == STATE_VERIFIED
 
   create_trade_configuration
   customer = create_customer
   account = create_account(customer)
+  account_state = account.state
 
   attestation_signing_key = OpenSSL::PKey.read(Config::ATTESTATION_SIGNING_KEY)
   identity_record = create_identity(attestation_signing_key, verification_key, customer)
-  state = identity_record.attestation_details.state
+  identity_record_state = identity_record.attestation_details.state
 
-  timeout_message = LazyStr.new { "Identity record verification was not completed in time. State: #{state}" }
+  timeout_message = LazyStr.new { "Account creation was not completed in time. State: #{account_state}" }
   Timeout.timeout(timeout, TimeoutError, timeout_message) do
-    final_states = [STATE_VERIFIED, STATE_FAILED]
-    until final_states.include?(state)
+    final_states = [STATE_CREATED]
+    until final_states.include?(account_state)
       sleep(1)
-      identity_record = get_identity(identity_record.guid)
-      state = identity_record.attestation_details.state
+      account = get_account(account.guid)
+      account_state = account.state
     end
   end
-  raise BadResultError, "Identity record has invalid state: #{state}" unless state == STATE_VERIFIED
+  raise BadResultError, "Account has invalid state: #{account_state}" unless account_state == STATE_CREATED
 
-  LOGGER.info("Identity record successfully created with state: #{state}")
+  LOGGER.info("Account successfully created with state: #{account_state}")
+
+  timeout_message = LazyStr.new { "Identity record verification was not completed in time. State: #{identity_record_state}" }
+  Timeout.timeout(timeout, TimeoutError, timeout_message) do
+    final_states = [STATE_VERIFIED, STATE_FAILED]
+    until final_states.include?(identity_record_state)
+      sleep(1)
+      identity_record = get_identity(identity_record.guid)
+      identity_record_state = identity_record.attestation_details.state
+    end
+  end
+  raise BadResultError, "Identity record has invalid state: #{identity_record_state}" unless identity_record_state == STATE_VERIFIED
+
+  LOGGER.info("Identity record successfully created with state: #{identity_record_state}")
 
   quantity = Money.from_amount(5, 'BTC').cents
   quote = create_quote(customer, 'buy', 'BTC-USD', quantity)
   trade = create_trade(quote)
-  state = trade.state
+  trade_state = trade.state
 
-  timeout_message = LazyStr.new { "Trade was not executed in time. State: #{state}." }
+  timeout_message = LazyStr.new { "Trade was not executed in time. State: #{trade_state}." }
   Timeout.timeout(timeout, TimeoutError, timeout_message) do
     final_states = [STATE_COMPLETED, STATE_FAILED]
-    until final_states.include?(state)
+    until final_states.include?(trade_state)
       sleep(1)
       trade = get_trade(trade.guid)
-      state = trade.state
+      trade_state = trade.state
     end
   end
-  raise BadResultError, "Trade has invalid state: #{state}" unless state == STATE_COMPLETED
+  raise BadResultError, "Trade has invalid state: #{trade_state}" unless trade_state == STATE_COMPLETED
 
-  LOGGER.info("Trade successfully created with state: #{state}")
+  LOGGER.info("Trade successfully created with state: #{trade_state}")
 
   account = get_account(account.guid)
   balance = Money.from_cents(account.platform_balance, 'BTC')
