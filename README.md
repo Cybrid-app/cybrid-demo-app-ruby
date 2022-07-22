@@ -44,4 +44,4 @@ ruby app/main.rb
 ```
 
 This will run the application, executing the buy flow. If the flow is successful, and the resulting BTC account reports the expected balance, the application will exit with a return code of `0`.
-If an invalid state is reported, such as an unexpected balance, or an error is raised during execution, the application will exist with a non-zero return code.
+If an invalid state is reported, such as an unexpected balance, or an error is raised during execution, the application will exit with a non-zero return code.
