@@ -27,7 +27,7 @@ Some environment variables are secret and are required to be provided by the use
 Copy the example file `example.env` as `.env`:
 
 ```
-cp example.env .env
+$ cp example.env .env
 ```
 
 Inside `.env`, configure the environment variables to point to your Bank and API application:
@@ -40,7 +40,7 @@ Inside `.env`, configure the environment variables to point to your Bank and API
 Once your environment is configured, you can run the demo application by executing the Ruby file `app/main.rb`:
 
 ```
-ruby app/main.rb
+$ ruby app/main.rb
 ```
 
 This will run the application, executing the buy flow. If the flow is successful, and the resulting BTC account reports the expected balance, the application will exit with a return code of `0`.
