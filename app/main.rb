@@ -299,7 +299,7 @@ begin
   timeout_message = LazyStr.new { "Trade was not executed in time. State: #{trade_state}." }
   Timeout.timeout(timeout, TimeoutError, timeout_message) do
     final_states = [STATE_SETTLING, STATE_COMPLETED, STATE_FAILED]
-    until final_states.include?(state)
+    until final_states.include?(trade_state)
       sleep(1)
       trade = get_trade(trade.guid)
       trade_state = trade.state
