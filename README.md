@@ -30,15 +30,18 @@ Copy the example file `example.env` as `.env`:
 cp example.env .env
 ```
 
-Inside `.env`, configure the environment variables to point to your Bank and API application.
+Inside `.env`, configure the environment variables to point to your Bank and API application:
 
-Set the value of `BANK_GUID` to the GUID of your Sandbox Bank.
-
-Set the value of `APPLICATION_CLIENT_ID` and `APPLICATION_CLIENT_SECRET` to your generated API Client ID and Client Secret, respectively.
+1. Set the value of `BANK_GUID` to the GUID of your Sandbox Bank.
+2. Set the value of `APPLICATION_CLIENT_ID` and `APPLICATION_CLIENT_SECRET` to your generated API Client ID and Client Secret, respectively.
 
 ## Execution
 
 Once your environment is configured, you can run the demo application by executing the Ruby file `app/main.rb`:
 
+```
+ruby app/main.rb
+```
 
-
+This will run the application, executing the buy flow. If the flow is successful, and the resulting BTC account reports the expected balance, the application will exit with a return code of `0`.
+If an invalid state is reported, such as an unexpected balance, or an error is raised during execution, the application will exist with a non-zero return code.
