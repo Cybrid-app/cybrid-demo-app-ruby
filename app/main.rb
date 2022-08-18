@@ -37,11 +37,11 @@ def configure
   end
 end
 
-def create_trade_configuration
-  LOGGER.info('Creating trade configuration...')
+def create_fee_configuration
+  LOGGER.info('Creating fee configurations...')
 
-  api_trade_configurations = CybridApiBank::TradingConfigurationsBankApi.new
-  trade_configuration_params = {
+  api_fee_configurations = CybridApiBank::FeeConfigurationsBankApi.new
+  fee_configuration_params = {
     asset: 'USD',
     fees: [
       {
@@ -50,17 +50,29 @@ def create_trade_configuration
       }
     ]
   }
-  post_trade_configuration_model = CybridApiBank::PostTradingConfigurationBankModel.new(trade_configuration_params)
-  trade_configuration = api_trade_configurations.create_trading_configuration(post_trade_configuration_model)
 
-  LOGGER.info('Created trade configuration.')
+  LOGGER.info('Creating trade fee configuration.')
 
-  trade_configuration
+  fee_configuration_params[:product_type] = 'trading'
+  post_trade_configuration_model = CybridApiBank::PostFeeConfigurationBankModel.new(fee_configuration_params)
+  trade_fee_configuation = api_fee_configurations.create_fee_configuration(post_trade_configuration_model)
+
+  LOGGER.info("Created fee configuration for trade account (#{trade_fee_configuation.guid}).")
+
+  LOGGER.info('Creating savings fee configuration.')
+
+  fee_configuration_params[:product_type] = 'savings'
+  fee_configuration_params[:product_provider] = 'compound'
+  post_trade_configuration_model = CybridApiBank::PostFeeConfigurationBankModel.new(fee_configuration_params)
+  savings_fee_configuation = api_fee_configurations.create_fee_configuration(post_trade_configuration_model)
+
+  LOGGER.info("Created fee configuration for savings account (#{savings_fee_configuation.guid}).")
+
 rescue CybridApiBank::ApiError => e
-  LOGGER.error("An API error occurred when creating trade configuration: #{e}")
+  LOGGER.error("An API error occurred when creating fee configuration: #{e}")
   raise e
 rescue StandardError => e
-  LOGGER.error("An unknown error occurred when creating trade configuration: #{e}")
+  LOGGER.error("An unknown error occurred when creating fee configuration: #{e}")
   raise e
 end
 
@@ -256,7 +268,7 @@ begin
   verification_key_state = verification_key.state
   raise BadResultError, "Verification key has invalid state: #{verification_key_state}" unless verification_key_state == STATE_VERIFIED
 
-  create_trade_configuration
+  create_fee_configuration
   customer = create_customer
   account = create_account(customer)
   account_state = account.state
