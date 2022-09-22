@@ -2,11 +2,11 @@ GEM
   remote: https://rubygems.org/
   specs:
     concurrent-ruby (1.1.10)
-    cybrid_api_bank_ruby (0.36.4)
+    cybrid_api_bank_ruby (0.38.19)
       typhoeus (~> 1.0, >= 1.0.1)
-    cybrid_api_id_ruby (0.36.4)
+    cybrid_api_id_ruby (0.38.19)
       typhoeus (~> 1.0, >= 1.0.1)
-    cybrid_api_organization_ruby (0.36.4)
+    cybrid_api_organization_ruby (0.38.19)
       typhoeus (~> 1.0, >= 1.0.1)
     diff-lcs (1.5.0)
     dotenv (2.7.6)

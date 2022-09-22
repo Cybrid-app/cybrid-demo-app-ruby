@@ -59,15 +59,6 @@ def create_fee_configuration
 
   LOGGER.info("Created fee configuration for trade account (#{trade_fee_configuation.guid}).")
 
-  LOGGER.info('Creating savings fee configuration.')
-
-  fee_configuration_params[:product_type] = 'savings'
-  fee_configuration_params[:product_provider] = 'compound'
-  post_trade_configuration_model = CybridApiBank::PostFeeConfigurationBankModel.new(fee_configuration_params)
-  savings_fee_configuation = api_fee_configurations.create_fee_configuration(post_trade_configuration_model)
-
-  LOGGER.info("Created fee configuration for savings account (#{savings_fee_configuation.guid}).")
-
 rescue CybridApiBank::ApiError => e
   LOGGER.error("An API error occurred when creating fee configuration: #{e}")
   raise e
