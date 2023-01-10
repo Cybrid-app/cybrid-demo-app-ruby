@@ -27,6 +27,10 @@ config/master.key
 # dotenv
 # TODO Comment out this rule if environment variables can be committed
 .env
+demo.env
+staging.env
+sandbox.env
+production.env
 
 ## Environment normalization:
 /.bundle

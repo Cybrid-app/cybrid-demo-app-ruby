@@ -34,6 +34,9 @@ class TimeoutError < StandardError; end
 def configure
   CybridApiBank.configure do |config|
     config.access_token = Auth.token
+    config.scheme = 'https'
+    config.host = "bank.#{Config::BASE_URL}"
+    config.server_index = nil
   end
 end
 
@@ -86,20 +89,20 @@ rescue StandardError => e
   raise e
 end
 
-def create_account(customer)
-  LOGGER.info('Creating account...')
+def create_account(customer, type, asset)
+  LOGGER.info("Creating #{type} account for asset #{asset}...")
 
   api_accounts = CybridApiBank::AccountsBankApi.new
   account_params = {
-    type: 'trading',
+    type: type,
     customer_guid: customer.guid,
-    asset: 'BTC',
-    name: 'Account'
+    asset: asset,
+    name: "#{asset} account for #{customer.guid}"
   }
   post_account_bank_model = CybridApiBank::PostAccountBankModel.new(account_params)
   account = api_accounts.create_account(post_account_bank_model)
 
-  LOGGER.info('Created account.')
+  LOGGER.info("Created #{type} account.")
 
   account
 rescue CybridApiBank::ApiError => e
@@ -108,6 +111,24 @@ rescue CybridApiBank::ApiError => e
 rescue StandardError => e
   LOGGER.error("An unknown error occurred when creating account: #{e}")
   raise e
+end
+
+def wait_for_account_created(account)
+  timeout = Config::TIMEOUT
+  account_state = account.state
+
+  timeout_message = LazyStr.new { "Account creation was not completed in time. State: #{account_state}" }
+  Timeout.timeout(timeout, TimeoutError, timeout_message) do
+    final_states = [STATE_CREATED]
+    until final_states.include?(account_state)
+      sleep(1)
+      account = get_account(account.guid)
+      account_state = account.state
+    end
+  end
+  raise BadResultError, "Account has invalid state: #{account_state}" unless account_state == STATE_CREATED
+
+  LOGGER.info("Account successfully created with state: #{account_state}")
 end
 
 def get_account(guid)
@@ -188,16 +209,19 @@ rescue StandardError => e
   raise e
 end
 
-def create_quote(customer, side, symbol, receive_amount)
-  LOGGER.info("Creating #{side} #{symbol} quote of #{receive_amount}...")
+def create_quote(customer, product_type, side, receive_amount, symbol: nil, asset: nil)
+  LOGGER.info("Creating #{side} #{product_type} quote for #{symbol}#{asset} of #{receive_amount}...")
 
-  api_quotes = CybridApiBank::QuotesBankApi.new
   buy_quote_params = {
+    product_type: product_type,
     customer_guid: customer.guid,
     side: side,
-    symbol: symbol,
     receive_amount: receive_amount.to_i
   }
+  buy_quote_params[:symbol] = symbol unless symbol.nil?
+  buy_quote_params[:asset] = asset unless asset.nil?
+
+  api_quotes = CybridApiBank::QuotesBankApi.new
   post_quote_model = CybridApiBank::QuoteBankModel.new(buy_quote_params)
   quote = api_quotes.create_quote(post_quote_model)
 
@@ -210,6 +234,63 @@ rescue CybridApiBank::ApiError => e
 rescue StandardError => e
   LOGGER.error("An unknown error occurred when creating quote: #{e}")
   raise e
+end
+
+def create_transfer(quote, transfer_type)
+  LOGGER.info("Creating #{transfer_type} transfer...")
+
+  api_transfers = CybridApiBank::TransfersBankApi.new
+  transfer_params = {
+    quote_guid: quote.guid,
+    transfer_type: transfer_type
+  }
+  post_transfer_model = CybridApiBank::PostTransferBankModel.new(transfer_params)
+  transfer = api_transfers.create_transfer(post_transfer_model)
+
+  LOGGER.info('Created transfer.')
+
+  transfer
+rescue CybridApiBank::ApiError => e
+  LOGGER.error("An API error occurred when creating transfer: #{e}")
+  raise e
+rescue StandardError => e
+  LOGGER.error("An unknown error occurred when creating transfer: #{e}")
+  raise e
+end
+
+def get_transfer(guid)
+  LOGGER.info('Getting transfer...')
+
+  api_transfers = CybridApiBank::TransfersBankApi.new
+  trade = api_transfers.get_transfer(guid)
+
+  LOGGER.info('Got transfer.')
+
+  trade
+rescue CybridApiBank::ApiError => e
+  LOGGER.error("An API error occurred when getting transfer: #{e}")
+  raise e
+rescue StandardError => e
+  LOGGER.error("An unknown error occurred when getting transfer: #{e}")
+  raise e
+end
+
+def wait_for_transfer_created(transfer)
+  timeout = Config::TIMEOUT
+  transfer_state = transfer.state
+
+  timeout_message = LazyStr.new { "Transfer was not executed in time. State: #{transfer_state}." }
+  Timeout.timeout(timeout, TimeoutError, timeout_message) do
+    final_states = [STATE_COMPLETED]
+    until final_states.include?(transfer_state)
+      sleep(1)
+      transfer = get_transfer(transfer.guid)
+      transfer_state = transfer.state
+    end
+  end
+  raise BadResultError, "Trade has invalid state: #{transfer_state}" unless transfer_state == STATE_COMPLETED
+
+  LOGGER.info("Trade successfully created with state: #{transfer_state}")
 end
 
 def create_trade(quote)
@@ -250,53 +331,8 @@ rescue StandardError => e
   raise e
 end
 
-begin
-  configure
-
+def wait_for_trade_created(trade)
   timeout = Config::TIMEOUT
-
-  verification_key = list_verification_keys.objects.first
-  verification_key_state = verification_key.state
-  raise BadResultError, "Verification key has invalid state: #{verification_key_state}" unless verification_key_state == STATE_VERIFIED
-
-  create_fee_configuration
-  customer = create_customer
-  account = create_account(customer)
-  account_state = account.state
-
-  attestation_signing_key = OpenSSL::PKey.read(Config::ATTESTATION_SIGNING_KEY)
-  identity_record = create_identity(attestation_signing_key, verification_key, customer)
-  identity_record_state = identity_record.attestation_details.state
-
-  timeout_message = LazyStr.new { "Account creation was not completed in time. State: #{account_state}" }
-  Timeout.timeout(timeout, TimeoutError, timeout_message) do
-    final_states = [STATE_CREATED]
-    until final_states.include?(account_state)
-      sleep(1)
-      account = get_account(account.guid)
-      account_state = account.state
-    end
-  end
-  raise BadResultError, "Account has invalid state: #{account_state}" unless account_state == STATE_CREATED
-
-  LOGGER.info("Account successfully created with state: #{account_state}")
-
-  timeout_message = LazyStr.new { "Identity record verification was not completed in time. State: #{identity_record_state}" }
-  Timeout.timeout(timeout, TimeoutError, timeout_message) do
-    final_states = [STATE_VERIFIED, STATE_FAILED]
-    until final_states.include?(identity_record_state)
-      sleep(1)
-      identity_record = get_identity(identity_record.guid)
-      identity_record_state = identity_record.attestation_details.state
-    end
-  end
-  raise BadResultError, "Identity record has invalid state: #{identity_record_state}" unless identity_record_state == STATE_VERIFIED
-
-  LOGGER.info("Identity record successfully created with state: #{identity_record_state}")
-
-  quantity = Money.from_amount(5, 'BTC')
-  quote = create_quote(customer, 'buy', 'BTC-USD', quantity.cents)
-  trade = create_trade(quote)
   trade_state = trade.state
 
   timeout_message = LazyStr.new { "Trade was not executed in time. State: #{trade_state}." }
@@ -311,12 +347,95 @@ begin
   raise BadResultError, "Trade has invalid state: #{trade_state}" unless trade_state == STATE_SETTLING
 
   LOGGER.info("Trade successfully created with state: #{trade_state}")
+end
 
-  account = get_account(account.guid)
-  balance = Money.from_cents(account.platform_balance, 'BTC')
-  raise BadResultError, "Account has an unexpected balance: #{balance}" unless balance == quantity
+begin
+  configure
 
-  LOGGER.info("Account has the expected balance: #{balance}")
+  timeout = Config::TIMEOUT
+
+  verification_key = list_verification_keys.objects.first
+  verification_key_state = verification_key.state
+  raise BadResultError, "Verification key has invalid state: #{verification_key_state}" unless verification_key_state == STATE_VERIFIED
+
+  create_fee_configuration
+  customer = create_customer
+
+  #
+  # Upload identity record
+  #
+
+  attestation_signing_key = OpenSSL::PKey.read(Config::ATTESTATION_SIGNING_KEY)
+  identity_record = create_identity(attestation_signing_key, verification_key, customer)
+  identity_record_state = identity_record.attestation_details.state
+
+  timeout_message = LazyStr.new { "Identity record verification was not completed in time. State: #{identity_record_state}" }
+  Timeout.timeout(timeout, TimeoutError, timeout_message) do
+    final_states = [STATE_VERIFIED, STATE_FAILED]
+    until final_states.include?(identity_record_state)
+      sleep(1)
+      identity_record = get_identity(identity_record.guid)
+      identity_record_state = identity_record.attestation_details.state
+    end
+  end
+  raise BadResultError, "Identity record has invalid state: #{identity_record_state}" unless identity_record_state == STATE_VERIFIED
+
+  LOGGER.info("Identity record successfully created with state: #{identity_record_state}")
+
+  #
+  # Create accounts
+  #
+
+  # Fiat USD account
+
+  fiat_usd_account = create_account(customer, 'fiat', 'USD')
+  wait_for_account_created(fiat_usd_account)
+
+  # Crypto BTC account
+
+  crypto_btc_account = create_account(customer, 'trading', 'BTC')
+  wait_for_account_created(crypto_btc_account)
+
+  #
+  # Add fiat funds to account
+  #
+
+  usd_quantity = Money.from_amount(1_000, 'USD')
+  fiat_book_transfer_quote = create_quote(customer, 'book_transfer', 'deposit', usd_quantity.cents, asset: 'USD')
+  transfer = create_transfer(fiat_book_transfer_quote, 'book')
+
+  wait_for_transfer_created(transfer)
+
+  #
+  # Check USD balance
+  #
+
+  fiat_usd_account = get_account(fiat_usd_account.guid)
+  fiat_balance = Money.from_cents(fiat_usd_account.platform_balance, 'USD')
+  raise BadResultError, "Fiat USD account has an unexpected balance: #{balance}" unless fiat_balance == usd_quantity
+
+  LOGGER.info("Fiat USD account has the expected balance: #{fiat_balance}")
+
+  #
+  # Purchase BTC
+  #
+
+  btc_quantity = Money.from_amount(0.001, 'BTC')
+  crypto_trading_btc_quote = create_quote(customer, 'trading', 'buy', btc_quantity.cents, symbol: 'BTC-USD')
+  trade = create_trade(crypto_trading_btc_quote)
+
+  wait_for_trade_created(trade)
+
+  #
+  # Check BTC balance
+  #
+
+  crypto_btc_account = get_account(crypto_btc_account.guid)
+  crypto_balance = Money.from_cents(crypto_btc_account.platform_balance, 'BTC')
+  raise BadResultError, "Crypto BTC account has an unexpected balance: #{balance}" unless crypto_balance == btc_quantity
+
+  LOGGER.info("Crypto BTC account has the expected balance: #{crypto_balance}")
+
   LOGGER.info('Test has completed successfully!')
 rescue CybridApiBank::ApiError => e
   LOGGER.error("Test failed due to an API error: #{e}")

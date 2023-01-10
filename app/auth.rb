@@ -10,8 +10,9 @@ module Auth
   BANKS_SCOPES = %w[banks:read banks:write].freeze
   CUSTOMERS_SCOPES = %w[customers:read customers:write customers:execute].freeze
   PRICES_SCOPES = %w[prices:read].freeze
-  QUOTES_SCOPES = %w[quotes:execute].freeze
+  QUOTES_SCOPES = %w[quotes:read quotes:execute].freeze
   TRADES_SCOPES = %w[trades:read trades:execute].freeze
+  TRANSFERS_SCOPES = %w[transfers:read transfers:execute].freeze
 
   SCOPES = [
     *ACCOUNTS_SCOPES,
@@ -19,7 +20,8 @@ module Auth
     *CUSTOMERS_SCOPES,
     *PRICES_SCOPES,
     *QUOTES_SCOPES,
-    *TRADES_SCOPES
+    *TRADES_SCOPES,
+    *TRANSFERS_SCOPES
   ].freeze
 
   def self.token
