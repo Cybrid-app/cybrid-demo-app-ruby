@@ -2,11 +2,15 @@
 # frozen_string_literal: true
 
 # 1. Create a customer
-# 2. Create a BTC-USD trading account
-# 3. Create an identity record
-# 4. Generate a buy quote for BTC-USD
-# 5. Execute the buy quote
-# 6. Get a balance of the customer's BTC-USD trading account
+# 2. Create an identity record for the customer
+# 3. Create a USD fiat account for the customer
+# 4. Create a BTC-USD trading account for the customer
+# 5. Generate a book transfer quote in USD
+# 6. Execute the book transfer quote using a transfer
+# 7. Get the balance of the customer's USD fiat account
+# 8. Generate a buy quote in BTC-USD
+# 9. Execute the buy quote using a trade
+# 10. Get the balance of the customer's BTC-USD trading account
 
 require 'base64'
 require 'dotenv/load'
@@ -412,7 +416,7 @@ begin
 
   fiat_usd_account = get_account(fiat_usd_account.guid)
   fiat_balance = Money.from_cents(fiat_usd_account.platform_balance, 'USD')
-  raise BadResultError, "Fiat USD account has an unexpected balance: #{balance}" unless fiat_balance == usd_quantity
+  raise BadResultError, "Fiat USD account has an unexpected balance: #{fiat_balance}" unless fiat_balance == usd_quantity
 
   LOGGER.info("Fiat USD account has the expected balance: #{fiat_balance}")
 
