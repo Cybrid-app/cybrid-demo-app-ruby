@@ -65,7 +65,6 @@ def create_fee_configuration
   trade_fee_configuation = api_fee_configurations.create_fee_configuration(post_trade_configuration_model)
 
   LOGGER.info("Created fee configuration for trade account (#{trade_fee_configuation.guid}).")
-
 rescue CybridApiBank::ApiError => e
   LOGGER.error("An API error occurred when creating fee configuration: #{e}")
   raise e
@@ -213,6 +212,7 @@ rescue StandardError => e
   raise e
 end
 
+# rubocop:disable Metrics/AbcSize, Metrics/ParameterLists
 def create_quote(customer, product_type, side, receive_amount, symbol: nil, asset: nil)
   LOGGER.info("Creating #{side} #{product_type} quote for #{symbol}#{asset} of #{receive_amount}...")
 
@@ -239,6 +239,7 @@ rescue StandardError => e
   LOGGER.error("An unknown error occurred when creating quote: #{e}")
   raise e
 end
+# rubocop:enable Metrics/AbcSize, Metrics/ParameterLists
 
 def create_transfer(quote, transfer_type, one_time_address = nil)
   LOGGER.info("Creating #{transfer_type} transfer...")
@@ -361,7 +362,10 @@ begin
 
   verification_key = list_verification_keys.objects.first
   verification_key_state = verification_key.state
-  raise BadResultError, "Verification key has invalid state: #{verification_key_state}" unless verification_key_state == STATE_VERIFIED
+  unless verification_key_state == STATE_VERIFIED
+    raise BadResultError,
+          "Verification key has invalid state: #{verification_key_state}"
+  end
 
   create_fee_configuration
   customer = create_customer
@@ -374,7 +378,9 @@ begin
   identity_record = create_identity(attestation_signing_key, verification_key, customer)
   identity_record_state = identity_record.attestation_details.state
 
-  timeout_message = LazyStr.new { "Identity record verification was not completed in time. State: #{identity_record_state}" }
+  timeout_message = LazyStr.new do
+    "Identity record verification was not completed in time. State: #{identity_record_state}"
+  end
   Timeout.timeout(timeout, TimeoutError, timeout_message) do
     final_states = [STATE_VERIFIED, STATE_FAILED]
     until final_states.include?(identity_record_state)
@@ -383,7 +389,10 @@ begin
       identity_record_state = identity_record.attestation_details.state
     end
   end
-  raise BadResultError, "Identity record has invalid state: #{identity_record_state}" unless identity_record_state == STATE_VERIFIED
+  unless identity_record_state == STATE_VERIFIED
+    raise BadResultError,
+          "Identity record has invalid state: #{identity_record_state}"
+  end
 
   LOGGER.info("Identity record successfully created with state: #{identity_record_state}")
 
@@ -417,7 +426,10 @@ begin
 
   fiat_usd_account = get_account(fiat_usd_account.guid)
   fiat_balance = Money.from_cents(fiat_usd_account.platform_balance, 'USD')
-  raise BadResultError, "Fiat USD account has an unexpected balance: #{fiat_balance}" unless fiat_balance == usd_quantity
+  unless fiat_balance == usd_quantity
+    raise BadResultError,
+          "Fiat USD account has an unexpected balance: #{fiat_balance}"
+  end
 
   LOGGER.info("Fiat USD account has the expected balance: #{fiat_balance}")
 
@@ -437,14 +449,18 @@ begin
 
   crypto_btc_account = get_account(crypto_btc_account.guid)
   crypto_balance = Money.from_cents(crypto_btc_account.platform_balance, 'BTC')
-  raise BadResultError, "Crypto BTC account has an unexpected balance: #{crypto_balance}" unless crypto_balance == btc_quantity
+  unless crypto_balance == btc_quantity
+    raise BadResultError,
+          "Crypto BTC account has an unexpected balance: #{crypto_balance}"
+  end
 
   #
   # Transfer BTC
   #
 
   btc_withdrawal_quantity = Money.from_amount(0.0005, 'BTC')
-  crypto_withdrawal_btc_quote = create_quote(customer, 'crypto_transfer', 'withdrawal', btc_withdrawal_quantity.cents, asset: 'BTC')
+  crypto_withdrawal_btc_quote = create_quote(customer, 'crypto_transfer', 'withdrawal', btc_withdrawal_quantity.cents,
+                                             asset: 'BTC')
   crypto_transfer = create_transfer(
     crypto_withdrawal_btc_quote,
     'crypto',
