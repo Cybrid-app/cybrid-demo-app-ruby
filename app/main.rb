@@ -240,7 +240,7 @@ rescue StandardError => e
   raise e
 end
 
-def create_transfer(quote, transfer_type)
+def create_transfer(quote, transfer_type, one_time_address = nil)
   LOGGER.info("Creating #{transfer_type} transfer...")
 
   api_transfers = CybridApiBank::TransfersBankApi.new
@@ -248,6 +248,7 @@ def create_transfer(quote, transfer_type)
     quote_guid: quote.guid,
     transfer_type: transfer_type
   }
+  transfer_params[:one_time_address] = one_time_address unless one_time_address.nil?
   post_transfer_model = CybridApiBank::PostTransferBankModel.new(transfer_params)
   transfer = api_transfers.create_transfer(post_transfer_model)
 
@@ -436,7 +437,35 @@ begin
 
   crypto_btc_account = get_account(crypto_btc_account.guid)
   crypto_balance = Money.from_cents(crypto_btc_account.platform_balance, 'BTC')
-  raise BadResultError, "Crypto BTC account has an unexpected balance: #{balance}" unless crypto_balance == btc_quantity
+  raise BadResultError, "Crypto BTC account has an unexpected balance: #{crypto_balance}" unless crypto_balance == btc_quantity
+
+  #
+  # Transfer BTC
+  #
+
+  btc_withdrawal_quantity = Money.from_amount(0.0005, 'BTC')
+  crypto_withdrawal_btc_quote = create_quote(customer, 'crypto_transfer', 'withdrawal', btc_withdrawal_quantity.cents, asset: 'BTC')
+  crypto_transfer = create_transfer(
+    crypto_withdrawal_btc_quote,
+    'crypto',
+    CybridApiBank::PostOneTimeAddressBankModel.new(
+      address: SecureRandom.base64(16),
+      tag: nil
+    )
+  )
+
+  wait_for_transfer_created(crypto_transfer)
+
+  #
+  # Check BTC balance
+  #
+
+  crypto_btc_account = get_account(crypto_btc_account.guid)
+  crypto_balance = Money.from_cents(crypto_btc_account.platform_balance, 'BTC')
+
+  unless crypto_balance == (btc_quantity - btc_withdrawal_quantity)
+    raise BadResultError, "Crypto BTC account has an unexpected balance: #{crypto_balance}"
+  end
 
   LOGGER.info("Crypto BTC account has the expected balance: #{crypto_balance}")
 
