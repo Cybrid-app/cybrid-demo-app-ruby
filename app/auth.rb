@@ -4,7 +4,7 @@ require_relative 'config'
 
 # nodoc
 module Auth
-  AUTH_URL = "id.#{Config::BASE_URL}/oauth/token"
+  AUTH_URL = "#{Config::URL_SCHEME}://id.#{Config::BASE_URL}/oauth/token"
 
   ACCOUNTS_SCOPES = %w[accounts:read accounts:execute].freeze
   BANKS_SCOPES = %w[banks:read banks:write].freeze
@@ -35,7 +35,7 @@ module Auth
       scope: SCOPES.join(' ')
     }.to_json
 
-    response = Faraday.post("https://#{AUTH_URL}", auth_body, auth_headers)
+    response = Faraday.post(AUTH_URL, auth_body, auth_headers)
     body = JSON.parse(response.body)
     body['access_token']
   end
