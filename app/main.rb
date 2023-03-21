@@ -44,35 +44,6 @@ def configure
   end
 end
 
-def create_fee_configuration
-  LOGGER.info('Creating fee configurations...')
-
-  api_fee_configurations = CybridApiBank::FeeConfigurationsBankApi.new
-  fee_configuration_params = {
-    asset: 'USD',
-    fees: [
-      {
-        type: 'spread',
-        spread_fee: 50
-      }
-    ]
-  }
-
-  LOGGER.info('Creating trade fee configuration.')
-
-  fee_configuration_params[:product_type] = 'trading'
-  post_trade_configuration_model = CybridApiBank::PostFeeConfigurationBankModel.new(fee_configuration_params)
-  trade_fee_configuation = api_fee_configurations.create_fee_configuration(post_trade_configuration_model)
-
-  LOGGER.info("Created fee configuration for trade account (#{trade_fee_configuation.guid}).")
-rescue CybridApiBank::ApiError => e
-  LOGGER.error("An API error occurred when creating fee configuration: #{e}")
-  raise e
-rescue StandardError => e
-  LOGGER.error("An unknown error occurred when creating fee configuration: #{e}")
-  raise e
-end
-
 def create_customer
   LOGGER.info('Creating customer...')
 
@@ -367,7 +338,6 @@ begin
           "Verification key has invalid state: #{verification_key_state}"
   end
 
-  create_fee_configuration
   customer = create_customer
 
   #
