@@ -2,7 +2,7 @@
 # frozen_string_literal: true
 
 # 1. Create a customer
-# 2. Create an identity record for the customer
+# 2. Create an attested identity verification for the customer
 # 3. Create a USD fiat account for the customer
 # 4. Create a BTC-USD trading account for the customer
 # 5. Generate a book transfer quote in USD
@@ -30,7 +30,7 @@ STATE_CREATED = 'created'
 STATE_COMPLETED = 'completed'
 STATE_FAILED = 'failed'
 STATE_SETTLING = 'settling'
-STATE_VERIFIED = 'verified'
+STATE_UNVERIFIED = 'unverified'
 
 class BadResultError < StandardError; end
 class TimeoutError < StandardError; end
@@ -38,46 +38,60 @@ class TimeoutError < StandardError; end
 def configure
   CybridApiBank.configure do |config|
     config.access_token = Auth.token
-    config.scheme = 'https'
+    config.scheme = Config::URL_SCHEME
     config.host = "bank.#{Config::BASE_URL}"
     config.server_index = nil
   end
 end
 
-def create_fee_configuration
-  LOGGER.info('Creating fee configurations...')
-
-  api_fee_configurations = CybridApiBank::FeeConfigurationsBankApi.new
-  fee_configuration_params = {
-    asset: 'USD',
-    fees: [
+def create_person
+  {
+    name: {
+      first: 'Jane',
+      middle: nil,
+      last: 'Doe',
+    },
+    address: {
+      street: '15310 Taylor Walk Suite 995',
+      street2: nil,
+      city: 'New York',
+      subdivision: 'NY',
+      postal_code: '12099',
+      country_code: 'US',
+    },
+    date_of_birth: '2001-01-01',
+    email_address: 'jane.doe@example.org',
+    phone_number: '+12406525665',
+    identification_numbers: [
       {
-        type: 'spread',
-        spread_fee: 50
+        type: 'social_security_number',
+        issuing_country_code: 'US',
+        identification_number: '669-55-0349',
+      },
+      {
+        type: 'drivers_license',
+        issuing_country_code: 'US',
+        identification_number: 'D152096714850065',
       }
     ]
   }
-
-  LOGGER.info('Creating trade fee configuration.')
-
-  fee_configuration_params[:product_type] = 'trading'
-  post_trade_configuration_model = CybridApiBank::PostFeeConfigurationBankModel.new(fee_configuration_params)
-  trade_fee_configuation = api_fee_configurations.create_fee_configuration(post_trade_configuration_model)
-
-  LOGGER.info("Created fee configuration for trade account (#{trade_fee_configuation.guid}).")
-rescue CybridApiBank::ApiError => e
-  LOGGER.error("An API error occurred when creating fee configuration: #{e}")
-  raise e
-rescue StandardError => e
-  LOGGER.error("An unknown error occurred when creating fee configuration: #{e}")
-  raise e
 end
 
-def create_customer
+def create_customer(person)
   LOGGER.info('Creating customer...')
 
   api_customers = CybridApiBank::CustomersBankApi.new
-  customer_params = { type: 'individual' }
+  customer_params = { 
+    type: 'individual',
+    name: CybridApiBank::PostCustomerNameBankModel.new(person[:name]),
+    address: CybridApiBank::PostCustomerAddressBankModel.new(person[:address]),
+    date_of_birth: Date.parse(person[:date_of_birth]),
+    email_address: person[:email_address],
+    phone_number: person[:phone_number],
+    identification_numbers: person[:identification_numbers].map do |x| 
+      CybridApiBank::PostIdentificationNumberBankModel.new(x)
+    end
+  }
   post_customer_bank_model = CybridApiBank::PostCustomerBankModel.new(customer_params)
   customer = api_customers.create_customer(post_customer_bank_model)
 
@@ -90,6 +104,41 @@ rescue CybridApiBank::ApiError => e
 rescue StandardError => e
   LOGGER.error("An unknown error occurred when creating customer: #{e}")
   raise e
+end
+
+def get_customer(guid)
+  LOGGER.info('Getting customer...')
+
+  api_customers = CybridApiBank::CustomersBankApi.new
+  customer = api_customers.get_customer(guid)
+
+  LOGGER.info('Got customer.')
+
+  customer
+rescue CybridApiBank::ApiError => e
+  LOGGER.error("An API error occurred when getting customer: #{e}")
+  raise e
+rescue StandardError => e
+  LOGGER.error("An unknown error occurred when getting customer: #{e}")
+  raise e
+end
+
+def wait_for_customer_unverified(customer)
+  timeout = Config::TIMEOUT
+  customer_state = customer.state
+
+  timeout_message = LazyStr.new { "Customer creation was not completed in time. State: #{customer_state}" }
+  Timeout.timeout(timeout, TimeoutError, timeout_message) do
+    final_states = [STATE_UNVERIFIED]
+    until final_states.include?(customer_state)
+      sleep(1)
+      customer = get_customer(customer.guid)
+      customer_state = customer.state
+    end
+  end
+  raise BadResultError, "Customer has invalid state: #{customer_state}" unless customer_state == STATE_UNVERIFIED
+
+  LOGGER.info("Customer successfully created with state: #{customer_state}")
 end
 
 def create_account(customer, type, asset)
@@ -116,6 +165,23 @@ rescue StandardError => e
   raise e
 end
 
+def get_account(guid)
+  LOGGER.info('Getting account...')
+
+  api_accounts = CybridApiBank::AccountsBankApi.new
+  account = api_accounts.get_account(guid)
+
+  LOGGER.info('Got account.')
+
+  account
+rescue CybridApiBank::ApiError => e
+  LOGGER.error("An API error occurred when getting account: #{e}")
+  raise e
+rescue StandardError => e
+  LOGGER.error("An unknown error occurred when getting account: #{e}")
+  raise e
+end
+
 def wait_for_account_created(account)
   timeout = Config::TIMEOUT
   account_state = account.state
@@ -134,59 +200,27 @@ def wait_for_account_created(account)
   LOGGER.info("Account successfully created with state: #{account_state}")
 end
 
-def get_account(guid)
-  LOGGER.info('Getting account...')
+def create_identity_verification(customer, person)
+  LOGGER.info('Creating identity verification...')
 
-  api_accounts = CybridApiBank::AccountsBankApi.new
-  account = api_accounts.get_account(guid)
-
-  LOGGER.info('Got account.')
-
-  account
-rescue CybridApiBank::ApiError => e
-  LOGGER.error("An API error occurred when getting account: #{e}")
-  raise e
-rescue StandardError => e
-  LOGGER.error("An unknown error occurred when getting account: #{e}")
-  raise e
-end
-
-def list_verification_keys
-  LOGGER.info('Getting verification keys...')
-
-  api_verification = CybridApiBank::VerificationKeysBankApi.new
-  verification_keys = api_verification.list_verification_keys
-
-  LOGGER.info('Got verification keys.')
-
-  verification_keys
-rescue CybridApiBank::ApiError => e
-  LOGGER.error("An API error occurred when getting verification key: #{e}")
-  raise e
-rescue StandardError => e
-  LOGGER.error("An unknown error occurred when getting verification key: #{e}")
-  raise e
-end
-
-def create_identity(rsa_signing_key, verification_key, customer)
-  LOGGER.info('Creating identity record...')
-
-  bank_guid = Config::BANK_GUID
-  token = create_jwt(rsa_signing_key, verification_key, customer, bank_guid)
-  api_identity = CybridApiBank::IdentityRecordsBankApi.new
-  identity_record_params = {
+  api_identity = CybridApiBank::IdentityVerificationsBankApi.new
+  identity_verification_params = {
+    type: 'kyc',
+    method: 'attested',
     customer_guid: customer.guid,
-    type: 'attestation',
-    attestation_details: {
-      token: token
-    }
+    name: CybridApiBank::PostIdentityVerificationNameBankModel.new(person[:name]),
+    address: CybridApiBank::PostIdentityVerificationAddressBankModel.new(person[:address]),
+    date_of_birth: Date.parse(person[:date_of_birth]),
+    identification_numbers: person[:identification_numbers].map do |x| 
+      CybridApiBank::PostIdentificationNumberBankModel.new(x)
+    end
   }
-  post_identity_record_model = CybridApiBank::IdentityRecordBankModel.new(identity_record_params)
-  identity_record = api_identity.create_identity_record(post_identity_record_model)
+  post_identity_verification_model = CybridApiBank::PostIdentityVerificationBankModel.new(identity_verification_params)
+  identity_verification = api_identity.create_identity_verification(post_identity_verification_model)
 
-  LOGGER.info('Created identity record.')
+  LOGGER.info('Created identity verification.')
 
-  identity_record
+  identity_verification
 rescue CybridApiBank::ApiError => e
   LOGGER.error("An API error occurred when creating identity: #{e}")
   raise e
@@ -195,21 +229,39 @@ rescue StandardError => e
   raise e
 end
 
-def get_identity(guid)
-  LOGGER.info('Getting identity record...')
+def get_identity_verification(guid)
+  LOGGER.info('Getting identity verification...')
 
-  api_identity = CybridApiBank::IdentityRecordsBankApi.new
-  identity_record = api_identity.get_identity_record(guid)
+  api_identity = CybridApiBank::IdentityVerificationsBankApi.new
+  identity_verification = api_identity.get_identity_verification(guid)
 
-  LOGGER.info('Got identity record.')
+  LOGGER.info('Got identity verification.')
 
-  identity_record
+  identity_verification
 rescue CybridApiBank::ApiError => e
   LOGGER.error("An API error occurred when getting identity: #{e}")
   raise e
 rescue StandardError => e
   LOGGER.error("An unknown error occurred when getting identity: #{e}")
   raise e
+end
+
+def wait_for_identity_verification_completed(identity_verification)
+  timeout = Config::TIMEOUT
+  identity_verification_state = identity_verification.state
+
+  timeout_message = LazyStr.new { "Identity verification was not completed in time. State: #{identity_verification_state}" }
+  Timeout.timeout(timeout, TimeoutError, timeout_message) do
+    final_states = [STATE_COMPLETED]
+    until final_states.include?(identity_verification_state)
+      sleep(1)
+      identity_verification = get_identity_verification(identity_verification.guid)
+      identity_verification_state = identity_verification.state
+    end
+  end
+  raise BadResultError, "Identity verification has invalid state: #{identity_verification_state}" unless identity_verification_state == STATE_COMPLETED
+
+  LOGGER.info("Identity verification successfully created with state: #{identity_verification_state}")
 end
 
 # rubocop:disable Metrics/AbcSize, Metrics/ParameterLists
@@ -357,44 +409,22 @@ end
 
 begin
   configure
-
   timeout = Config::TIMEOUT
-
-  verification_key = list_verification_keys.objects.first
-  verification_key_state = verification_key.state
-  unless verification_key_state == STATE_VERIFIED
-    raise BadResultError,
-          "Verification key has invalid state: #{verification_key_state}"
-  end
-
-  create_fee_configuration
-  customer = create_customer
+  person = create_person
 
   #
-  # Upload identity record
+  # Create customer
   #
 
-  attestation_signing_key = OpenSSL::PKey.read(Config::ATTESTATION_SIGNING_KEY)
-  identity_record = create_identity(attestation_signing_key, verification_key, customer)
-  identity_record_state = identity_record.attestation_details.state
+  customer = create_customer(person)
+  wait_for_customer_unverified(customer)
 
-  timeout_message = LazyStr.new do
-    "Identity record verification was not completed in time. State: #{identity_record_state}"
-  end
-  Timeout.timeout(timeout, TimeoutError, timeout_message) do
-    final_states = [STATE_VERIFIED, STATE_FAILED]
-    until final_states.include?(identity_record_state)
-      sleep(1)
-      identity_record = get_identity(identity_record.guid)
-      identity_record_state = identity_record.attestation_details.state
-    end
-  end
-  unless identity_record_state == STATE_VERIFIED
-    raise BadResultError,
-          "Identity record has invalid state: #{identity_record_state}"
-  end
+  #
+  # Create identity verifications
+  #
 
-  LOGGER.info("Identity record successfully created with state: #{identity_record_state}")
+  identity_verification = create_identity_verification(customer, person)
+  wait_for_identity_verification_completed(identity_verification)
 
   #
   # Create accounts
