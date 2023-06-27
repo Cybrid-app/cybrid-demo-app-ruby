@@ -13,6 +13,7 @@ module Auth
   QUOTES_SCOPES = %w[quotes:read quotes:execute].freeze
   TRADES_SCOPES = %w[trades:read trades:execute].freeze
   TRANSFERS_SCOPES = %w[transfers:read transfers:execute].freeze
+  EXTERNAL_WALLET_SCOPES = %w[external_wallets:read external_wallets:execute].freeze
 
   SCOPES = [
     *ACCOUNTS_SCOPES,
@@ -21,7 +22,8 @@ module Auth
     *PRICES_SCOPES,
     *QUOTES_SCOPES,
     *TRADES_SCOPES,
-    *TRANSFERS_SCOPES
+    *TRANSFERS_SCOPES,
+    *EXTERNAL_WALLET_SCOPES
   ].freeze
 
   def self.token
