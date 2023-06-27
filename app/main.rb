@@ -293,7 +293,7 @@ rescue StandardError => e
 end
 # rubocop:enable Metrics/AbcSize, Metrics/ParameterLists
 
-def create_transfer(quote, transfer_type, one_time_address = nil)
+def create_transfer(quote, transfer_type, external_wallet = nil)
   LOGGER.info("Creating #{transfer_type} transfer...")
 
   api_transfers = CybridApiBank::TransfersBankApi.new
@@ -301,7 +301,7 @@ def create_transfer(quote, transfer_type, one_time_address = nil)
     quote_guid: quote.guid,
     transfer_type: transfer_type
   }
-  transfer_params[:one_time_address] = one_time_address unless one_time_address.nil?
+  transfer_params[:external_wallet_guid] = external_wallet.guid unless external_wallet.nil?
   post_transfer_model = CybridApiBank::PostTransferBankModel.new(transfer_params)
   transfer = api_transfers.create_transfer(post_transfer_model)
 
@@ -349,6 +349,66 @@ def wait_for_transfer_created(transfer)
   raise BadResultError, "Trade has invalid state: #{transfer_state}" unless transfer_state == STATE_COMPLETED
 
   LOGGER.info("Trade successfully created with state: #{transfer_state}")
+end
+
+def create_external_wallet(customer, asset)
+  LOGGER.info("Creating external wallet for #{asset}...")
+
+  api_external_wallet = CybridApiBank::ExternalWalletsBankApi.new
+  external_wallet_params = {
+    name: "External wallet for #{customer.guid}",
+    asset: asset,
+    address: SecureRandom.base64(16),
+    tag: SecureRandom.base64(16),
+    customer_guid: customer.guid
+  }
+  post_external_wallet_model = CybridApiBank::PostExternalWalletBankModel.new(external_wallet_params)
+  external_wallet = api_external_wallet.create_external_wallet(post_external_wallet_model)
+
+  LOGGER.info('Created external wallet.')
+
+  external_wallet
+rescue CybridApiBank::ApiError => e
+  LOGGER.error("An API error occurred when creating external wallet: #{e}")
+  raise e
+rescue StandardError => e
+  LOGGER.error("An unknown error occurred when creating external wallet: #{e}")
+  raise e
+end
+
+def get_external_wallet(guid)
+  LOGGER.info('Getting external wallet...')
+
+  api_external_wallet = CybridApiBank::ExternalWalletsBankApi.new
+  external_wallet = api_external_wallet.get_external_wallet(guid)
+
+  LOGGER.info('Got external wallet.')
+
+  external_wallet
+rescue CybridApiBank::ApiError => e
+  LOGGER.error("An API error occurred when getting external wallet: #{e}")
+  raise e
+rescue StandardError => e
+  LOGGER.error("An unknown error occurred when getting external wallet: #{e}")
+  raise e
+end
+
+def wait_for_external_wallet_created(external_wallet)
+  timeout = Config::TIMEOUT
+  external_wallet_state = external_wallet.state
+
+  timeout_message = LazyStr.new { "External wallet was not created in time. State: #{external_wallet_state}." }
+  Timeout.timeout(timeout, TimeoutError, timeout_message) do
+    final_states = [STATE_COMPLETED]
+    until final_states.include?(external_wallet_state)
+      sleep(1)
+      external_wallet = get_external_wallet(external_wallet.guid)
+      external_wallet_state = external_wallet.state
+    end
+  end
+  raise BadResultError, "External wallet has invalid state: #{external_wallet_state}" unless external_wallet_state == STATE_COMPLETED
+
+  LOGGER.info("External wallet successfully created with state: #{external_wallet_state}")
 end
 
 def create_trade(quote)
@@ -440,6 +500,11 @@ begin
   crypto_btc_account = create_account(customer, 'trading', 'BTC')
   wait_for_account_created(crypto_btc_account)
 
+  # Add BTC external wallet
+
+  external_wallet = create_external_wallet(customer, 'BTC')
+  wait_for_external_wallet_created(external_wallet)
+
   #
   # Add fiat funds to account
   #
@@ -491,14 +556,7 @@ begin
   btc_withdrawal_quantity = Money.from_amount(0.0005, 'BTC')
   crypto_withdrawal_btc_quote = create_quote(customer, 'crypto_transfer', 'withdrawal', btc_withdrawal_quantity.cents,
                                              asset: 'BTC')
-  crypto_transfer = create_transfer(
-    crypto_withdrawal_btc_quote,
-    'crypto',
-    CybridApiBank::PostOneTimeAddressBankModel.new(
-      address: SecureRandom.base64(16),
-      tag: nil
-    )
-  )
+  crypto_transfer = create_transfer(crypto_withdrawal_btc_quote, 'crypto', external_wallet)
 
   wait_for_transfer_created(crypto_transfer)
 
