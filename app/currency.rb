@@ -16,4 +16,26 @@ bitcoin = {
   delimiter: ','
 }
 
+ethereum = {
+  iso_code: 'ETH',
+  name: 'Ethereum',
+  symbol: 'Ξ',
+  subunit: 'wei',
+  subunit_to_unit: 1_000_000_000_000_000_000,
+  separator: '.',
+  delimiter: ','
+}
+
+usdc = {
+  iso_code: 'USDC',
+  name: 'USDC',
+  symbol: '$',
+  subunit: 'cents',
+  subunit_to_unit: 1_000_000,
+  separator: '.',
+  delimiter: ','
+}
+
 Money::Currency.register(bitcoin)
+Money::Currency.register(ethereum)
+Money::Currency.register(usdc)
