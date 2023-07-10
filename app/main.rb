@@ -4,13 +4,15 @@
 # 1. Create a customer
 # 2. Create an attested identity verification for the customer
 # 3. Create a USD fiat account for the customer
-# 4. Create a BTC-USD trading account for the customer
-# 5. Generate a book transfer quote in USD
-# 6. Execute the book transfer quote using a transfer
-# 7. Get the balance of the customer's USD fiat account
-# 8. Generate a buy quote in BTC-USD
-# 9. Execute the buy quote using a trade
-# 10. Get the balance of the customer's BTC-USD trading account
+# 4. Generate a book transfer quote in USD
+# 5. Execute the book transfer quote using a transfer
+# 6. Get the balance of the customer's USD fiat account
+# 7. Create a crypto trading accounts: BTC, ETH, USDC for the customer
+# 8. Create cyrpto wallets for the customer
+# 8. Generate buy quotes
+# 9. Execute buy quotes using a trade
+# 10. Execute a crypto withdrawal
+# 11. Get the balance of the customer's crypto trading account
 
 require 'base64'
 require 'dotenv/load'
@@ -44,12 +46,13 @@ def configure
   end
 end
 
+# rubocop:disable Metrics/MethodLength
 def create_person
   {
     name: {
       first: 'Jane',
       middle: nil,
-      last: 'Doe',
+      last: 'Doe'
     },
     address: {
       street: '15310 Taylor Walk Suite 995',
@@ -57,7 +60,7 @@ def create_person
       city: 'New York',
       subdivision: 'NY',
       postal_code: '12099',
-      country_code: 'US',
+      country_code: 'US'
     },
     date_of_birth: '2001-01-01',
     email_address: 'jane.doe@example.org',
@@ -66,29 +69,31 @@ def create_person
       {
         type: 'social_security_number',
         issuing_country_code: 'US',
-        identification_number: '669-55-0349',
+        identification_number: '669-55-0349'
       },
       {
         type: 'drivers_license',
         issuing_country_code: 'US',
-        identification_number: 'D152096714850065',
+        identification_number: 'D152096714850065'
       }
     ]
   }
 end
+# rubocop:enable Metrics/MethodLength
 
+# rubocop:disable Metrics/AbcSize
 def create_customer(person)
   LOGGER.info('Creating customer...')
 
   api_customers = CybridApiBank::CustomersBankApi.new
-  customer_params = { 
+  customer_params = {
     type: 'individual',
     name: CybridApiBank::PostCustomerNameBankModel.new(person[:name]),
     address: CybridApiBank::PostCustomerAddressBankModel.new(person[:address]),
     date_of_birth: Date.parse(person[:date_of_birth]),
     email_address: person[:email_address],
     phone_number: person[:phone_number],
-    identification_numbers: person[:identification_numbers].map do |x| 
+    identification_numbers: person[:identification_numbers].map do |x|
       CybridApiBank::PostIdentificationNumberBankModel.new(x)
     end
   }
@@ -105,6 +110,7 @@ rescue StandardError => e
   LOGGER.error("An unknown error occurred when creating customer: #{e}")
   raise e
 end
+# rubocop:enable Metrics/AbcSize
 
 def get_customer(guid)
   LOGGER.info('Getting customer...')
@@ -200,6 +206,7 @@ def wait_for_account_created(account)
   LOGGER.info("Account successfully created with state: #{account_state}")
 end
 
+# rubocop:disable Metrics/AbcSize
 def create_identity_verification(customer, person)
   LOGGER.info('Creating identity verification...')
 
@@ -211,7 +218,7 @@ def create_identity_verification(customer, person)
     name: CybridApiBank::PostIdentityVerificationNameBankModel.new(person[:name]),
     address: CybridApiBank::PostIdentityVerificationAddressBankModel.new(person[:address]),
     date_of_birth: Date.parse(person[:date_of_birth]),
-    identification_numbers: person[:identification_numbers].map do |x| 
+    identification_numbers: person[:identification_numbers].map do |x|
       CybridApiBank::PostIdentificationNumberBankModel.new(x)
     end
   }
@@ -228,6 +235,7 @@ rescue StandardError => e
   LOGGER.error("An unknown error occurred when creating identity: #{e}")
   raise e
 end
+# rubocop:enable Metrics/AbcSize
 
 def get_identity_verification(guid)
   LOGGER.info('Getting identity verification...')
@@ -250,7 +258,9 @@ def wait_for_identity_verification_completed(identity_verification)
   timeout = Config::TIMEOUT
   identity_verification_state = identity_verification.state
 
-  timeout_message = LazyStr.new { "Identity verification was not completed in time. State: #{identity_verification_state}" }
+  timeout_message = LazyStr.new do
+    "Identity verification was not completed in time. State: #{identity_verification_state}"
+  end
   Timeout.timeout(timeout, TimeoutError, timeout_message) do
     final_states = [STATE_COMPLETED]
     until final_states.include?(identity_verification_state)
@@ -259,23 +269,29 @@ def wait_for_identity_verification_completed(identity_verification)
       identity_verification_state = identity_verification.state
     end
   end
-  raise BadResultError, "Identity verification has invalid state: #{identity_verification_state}" unless identity_verification_state == STATE_COMPLETED
+  unless identity_verification_state == STATE_COMPLETED
+    raise BadResultError,
+          "Identity verification has invalid state: #{identity_verification_state}"
+  end
 
   LOGGER.info("Identity verification successfully created with state: #{identity_verification_state}")
 end
 
 # rubocop:disable Metrics/AbcSize, Metrics/ParameterLists
-def create_quote(customer, product_type, side, receive_amount, symbol: nil, asset: nil)
-  LOGGER.info("Creating #{side} #{product_type} quote for #{symbol}#{asset} of #{receive_amount}...")
+def create_quote(customer, product_type, side, deliver_amount: nil, receive_amount: nil, symbol: nil, asset: nil)
+  amount = deliver_amount || receive_amount
+
+  LOGGER.info("Creating #{side} #{product_type} quote for #{symbol}#{asset} of #{amount}...")
 
   buy_quote_params = {
     product_type: product_type,
     customer_guid: customer.guid,
-    side: side,
-    receive_amount: receive_amount.to_i
+    side: side
   }
   buy_quote_params[:symbol] = symbol unless symbol.nil?
   buy_quote_params[:asset] = asset unless asset.nil?
+  buy_quote_params[:deliver_amount] = deliver_amount unless deliver_amount.nil?
+  buy_quote_params[:receive_amount] = receive_amount unless receive_amount.nil?
 
   api_quotes = CybridApiBank::QuotesBankApi.new
   post_quote_model = CybridApiBank::QuoteBankModel.new(buy_quote_params)
@@ -346,9 +362,9 @@ def wait_for_transfer_created(transfer)
       transfer_state = transfer.state
     end
   end
-  raise BadResultError, "Trade has invalid state: #{transfer_state}" unless transfer_state == STATE_COMPLETED
+  raise BadResultError, "Transfer has invalid state: #{transfer_state}" unless transfer_state == STATE_COMPLETED
 
-  LOGGER.info("Trade successfully created with state: #{transfer_state}")
+  LOGGER.info("Transfer successfully created with state: #{transfer_state}")
 end
 
 def create_external_wallet(customer, asset)
@@ -406,7 +422,10 @@ def wait_for_external_wallet_created(external_wallet)
       external_wallet_state = external_wallet.state
     end
   end
-  raise BadResultError, "External wallet has invalid state: #{external_wallet_state}" unless external_wallet_state == STATE_COMPLETED
+  unless external_wallet_state == STATE_COMPLETED
+    raise BadResultError,
+          "External wallet has invalid state: #{external_wallet_state}"
+  end
 
   LOGGER.info("External wallet successfully created with state: #{external_wallet_state}")
 end
@@ -469,7 +488,6 @@ end
 
 begin
   configure
-  timeout = Config::TIMEOUT
   person = create_person
 
   #
@@ -487,30 +505,18 @@ begin
   wait_for_identity_verification_completed(identity_verification)
 
   #
-  # Create accounts
-  #
-
-  # Fiat USD account
+  # Create fiat USD account
 
   fiat_usd_account = create_account(customer, 'fiat', 'USD')
   wait_for_account_created(fiat_usd_account)
-
-  # Crypto BTC account
-
-  crypto_btc_account = create_account(customer, 'trading', 'BTC')
-  wait_for_account_created(crypto_btc_account)
-
-  # Add BTC external wallet
-
-  external_wallet = create_external_wallet(customer, 'BTC')
-  wait_for_external_wallet_created(external_wallet)
 
   #
   # Add fiat funds to account
   #
 
   usd_quantity = Money.from_amount(1_000, 'USD')
-  fiat_book_transfer_quote = create_quote(customer, 'book_transfer', 'deposit', usd_quantity.cents, asset: 'USD')
+  fiat_book_transfer_quote = create_quote(customer, 'book_transfer', 'deposit', receive_amount: usd_quantity.cents,
+                                                                                asset: 'USD')
   transfer = create_transfer(fiat_book_transfer_quote, 'book')
 
   wait_for_transfer_created(transfer)
@@ -528,50 +534,60 @@ begin
 
   LOGGER.info("Fiat USD account has the expected balance: #{fiat_balance}")
 
-  #
-  # Purchase BTC
-  #
+  Config::CRYPTO_ASSETS.each do |asset|
+    crypto_accounts = {}
+    crypto_wallets = {}
 
-  btc_quantity = Money.from_amount(0.001, 'BTC')
-  crypto_trading_btc_quote = create_quote(customer, 'trading', 'buy', btc_quantity.cents, symbol: 'BTC-USD')
-  trade = create_trade(crypto_trading_btc_quote)
+    #
+    # Crypto accounts
 
-  wait_for_trade_created(trade)
+    crypto_accounts[asset] = create_account(customer, 'trading', asset)
 
-  #
-  # Check BTC balance
-  #
+    wait_for_account_created(crypto_accounts[asset])
 
-  crypto_btc_account = get_account(crypto_btc_account.guid)
-  crypto_balance = Money.from_cents(crypto_btc_account.platform_balance, 'BTC')
-  unless crypto_balance == btc_quantity
-    raise BadResultError,
-          "Crypto BTC account has an unexpected balance: #{crypto_balance}"
+    #
+    # Crypto wallets
+
+    crypto_wallets[asset] = create_external_wallet(customer, asset)
+
+    wait_for_external_wallet_created(crypto_wallets[asset])
+
+    #
+    # Purchase crypto
+
+    deliver_amount = Money.from_amount(25_000, 'USD')
+
+    quote = create_quote(customer, 'trading', 'buy', deliver_amount: deliver_amount.cents, symbol: "#{asset}-USD")
+    trade = create_trade(quote)
+
+    wait_for_trade_created(trade)
+
+    #
+    # Transfer crypto
+
+    crypto_account = get_account(crypto_accounts[asset].guid)
+    crypto_balance = Money.from_cents(crypto_account.platform_balance, asset)
+
+    raise BadResultError, "Crypto #{asset} account has an unexpected balance: #{crypto_balance}" if crypto_balance.zero?
+
+    external_wallet = get_external_wallet(crypto_wallets[asset].guid)
+
+    quote = create_quote(customer, 'crypto_transfer', 'withdrawal', deliver_amount: crypto_balance.cents, asset: asset)
+    transfer = create_transfer(quote, 'crypto', external_wallet)
+
+    wait_for_transfer_created(transfer)
+
+    #
+    # Check crypto balances
+
+    crypto_account = get_account(crypto_accounts[asset].guid)
+    crypto_balance = Money.from_cents(crypto_account.platform_balance, asset)
+    unless crypto_balance.zero?
+      raise BadResultError, "Crypto #{asset} account has an unexpected balance: #{crypto_balance}"
+    end
+
+    LOGGER.info("Crypto #{asset} account has the expected balance: #{crypto_balance}")
   end
-
-  #
-  # Transfer BTC
-  #
-
-  btc_withdrawal_quantity = Money.from_amount(0.0005, 'BTC')
-  crypto_withdrawal_btc_quote = create_quote(customer, 'crypto_transfer', 'withdrawal', btc_withdrawal_quantity.cents,
-                                             asset: 'BTC')
-  crypto_transfer = create_transfer(crypto_withdrawal_btc_quote, 'crypto', external_wallet)
-
-  wait_for_transfer_created(crypto_transfer)
-
-  #
-  # Check BTC balance
-  #
-
-  crypto_btc_account = get_account(crypto_btc_account.guid)
-  crypto_balance = Money.from_cents(crypto_btc_account.platform_balance, 'BTC')
-
-  unless crypto_balance == (btc_quantity - btc_withdrawal_quantity)
-    raise BadResultError, "Crypto BTC account has an unexpected balance: #{crypto_balance}"
-  end
-
-  LOGGER.info("Crypto BTC account has the expected balance: #{crypto_balance}")
 
   LOGGER.info('Test has completed successfully!')
 rescue CybridApiBank::ApiError => e
