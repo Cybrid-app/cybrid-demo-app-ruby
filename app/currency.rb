@@ -36,6 +36,39 @@ usdc = {
   delimiter: ','
 }
 
+usdc_sol = {
+  iso_code: 'USDC_SOL',
+  name: 'USDC (SOL)',
+  symbol: '$',
+  subunit: 'cents',
+  subunit_to_unit: 1_000_000,
+  separator: '.',
+  delimiter: ','
+}
+
+usdc_pol = {
+  iso_code: 'USDC_POL',
+  name: 'USDC (POL)',
+  symbol: '$',
+  subunit: 'cents',
+  subunit_to_unit: 1_000_000,
+  separator: '.',
+  delimiter: ','
+}
+
+usdc_ste = {
+  iso_code: 'USDC_STE',
+  name: 'USDC (STE)',
+  symbol: '$',
+  subunit: 'cents',
+  subunit_to_unit: 1_0_000_000,
+  separator: '.',
+  delimiter: ','
+}
+
 Money::Currency.register(bitcoin)
 Money::Currency.register(ethereum)
 Money::Currency.register(usdc)
+Money::Currency.register(usdc_sol)
+Money::Currency.register(usdc_pol)
+Money::Currency.register(usdc_ste)
