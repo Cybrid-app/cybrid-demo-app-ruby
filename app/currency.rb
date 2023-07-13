@@ -26,6 +26,16 @@ ethereum = {
   delimiter: ','
 }
 
+solana = {
+  iso_code: 'SOL',
+  name: 'Solana',
+  symbol: '◎',
+  subunit: 'lamport',
+  subunit_to_unit: 1_000_000_000,
+  separator: '.',
+  delimiter: ','
+}
+
 usdc = {
   iso_code: 'USDC',
   name: 'USDC',
@@ -68,6 +78,7 @@ usdc_ste = {
 
 Money::Currency.register(bitcoin)
 Money::Currency.register(ethereum)
+Money::Currency.register(solana)
 Money::Currency.register(usdc)
 Money::Currency.register(usdc_sol)
 Money::Currency.register(usdc_pol)
