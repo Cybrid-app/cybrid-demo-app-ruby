@@ -3,16 +3,17 @@
 
 # 1. Create a customer
 # 2. Create an attested identity verification for the customer
-# 3. Create a USD fiat account for the customer
-# 4. Generate a book transfer quote in USD
-# 5. Execute the book transfer quote using a transfer
-# 6. Get the balance of the customer's USD fiat account
-# 7. Create a crypto trading accounts: BTC, ETH, USDC for the customer
-# 8. Create cyrpto wallets for the customer
-# 8. Generate buy quotes
-# 9. Execute buy quotes using a trade
-# 10. Execute a crypto withdrawal
-# 11. Get the balance of the customer's crypto trading account
+# 3. Get USD fiat account for the bank
+# 4. Create a USD fiat accuont for the customer
+# 5. Generate a book transfer quote in USD
+# 6. Execute the book transfer quote using a transfer
+# 7. Get the balance of the customer's USD fiat account
+# 8. Create a crypto trading accounts: BTC, ETH, USDC for the customer
+# 9. Create cyrpto wallets for the customer
+# 10. Generate buy quotes
+# 11. Execute buy quotes using a trade
+# 12. Execute a crypto withdrawal
+# 13. Get the balance of the customer's crypto trading account
 
 require 'base64'
 require 'dotenv/load'
@@ -171,6 +172,23 @@ rescue StandardError => e
   raise e
 end
 
+def list_accounts(owner, type)
+  LOGGER.info('Listing accounts...')
+
+  api_accounts = CybridApiBank::AccountsBankApi.new
+  accounts = api_accounts.list_accounts(owner: owner, type: type)
+
+  LOGGER.info('Got accounts.')
+
+  accounts.objects
+rescue CybridApiBank::ApiError => e
+  LOGGER.error("An API error occurred when listing accounts: #{e}")
+  raise e
+rescue StandardError => e
+  LOGGER.error("An unknown error occurred when listing accounts: #{e}")
+  raise e
+end
+
 def get_account(guid)
   LOGGER.info('Getting account...')
 
@@ -307,9 +325,10 @@ rescue StandardError => e
   LOGGER.error("An unknown error occurred when creating quote: #{e}")
   raise e
 end
-# rubocop:enable Metrics/AbcSize, Metrics/ParameterLists
+# rubocop:enable Metrics/ParameterLists
 
-def create_transfer(quote, transfer_type, external_wallet = nil)
+def create_transfer(quote, transfer_type, source_platform_account: nil, destination_platform_account: nil,
+                    external_wallet: nil)
   LOGGER.info("Creating #{transfer_type} transfer...")
 
   api_transfers = CybridApiBank::TransfersBankApi.new
@@ -317,6 +336,11 @@ def create_transfer(quote, transfer_type, external_wallet = nil)
     quote_guid: quote.guid,
     transfer_type: transfer_type
   }
+  transfer_params[:source_account_guid] = source_platform_account.guid unless source_platform_account.nil?
+  unless destination_platform_account.nil?
+    transfer_params[:destination_account_guid] =
+      destination_platform_account.guid
+  end
   transfer_params[:external_wallet_guid] = external_wallet.guid unless external_wallet.nil?
   post_transfer_model = CybridApiBank::PostTransferBankModel.new(transfer_params)
   transfer = api_transfers.create_transfer(post_transfer_model)
@@ -331,6 +355,7 @@ rescue StandardError => e
   LOGGER.error("An unknown error occurred when creating transfer: #{e}")
   raise e
 end
+# rubocop:enable Metrics/AbcSize
 
 def get_transfer(guid)
   LOGGER.info('Getting transfer...')
@@ -486,6 +511,30 @@ def wait_for_trade_created(trade)
   LOGGER.info("Trade successfully created with state: #{trade_state}")
 end
 
+def wait_for_expected_account_balance(platform_account, expected_balance)
+  timeout = Config::TIMEOUT
+
+  account = get_account(platform_account.guid)
+  platform_balance = account.platform_balance
+
+  timeout_message = LazyStr.new { "Expected balance was not found in time. Expected balance: #{expected_balance}." }
+  Timeout.timeout(timeout, TimeoutError, timeout_message) do
+    until platform_balance == expected_balance
+      sleep(1)
+      account = get_account(platform_account.guid)
+      platform_balance = account.platform_balance
+    end
+  end
+  unless platform_balance == expected_balance
+    raise BadResultError,
+          "Account has an unexpected balance: #{platform_balance}"
+  end
+
+  LOGGER.info('Expected account balance successfully found.')
+
+  account
+end
+
 begin
   configure
   person = create_person
@@ -505,28 +554,35 @@ begin
   wait_for_identity_verification_completed(identity_verification)
 
   #
-  # Create fiat USD account
+  # Get bank fiat USD account
 
-  fiat_usd_account = create_account(customer, 'fiat', 'USD')
-  wait_for_account_created(fiat_usd_account)
+  bank_accounts = list_accounts(:bank, :fiat)
+  bank_fiat_usd_account = bank_accounts.find { |x| x.asset == 'USD' }
+  raise BadResultError, 'Bank has no USD fiat bank account' if bank_fiat_usd_account.nil?
+
+  #
+  # Create customer fiat USD account
+
+  customer_fiat_usd_account = create_account(customer, 'fiat', 'USD')
+  wait_for_account_created(customer_fiat_usd_account)
 
   #
   # Add fiat funds to account
   #
 
   usd_quantity = Money.from_amount(1_000, 'USD')
-  fiat_book_transfer_quote = create_quote(customer, 'book_transfer', 'deposit', receive_amount: usd_quantity.cents,
-                                                                                asset: 'USD')
-  transfer = create_transfer(fiat_book_transfer_quote, 'book')
-
+  fiat_book_transfer_quote = create_quote(customer, 'book_transfer', 'deposit',
+                                          receive_amount: usd_quantity.cents, asset: 'USD')
+  transfer = create_transfer(fiat_book_transfer_quote, 'book', source_platform_account: bank_fiat_usd_account,
+                                                               destination_platform_account: customer_fiat_usd_account)
   wait_for_transfer_created(transfer)
 
   #
   # Check USD balance
   #
 
-  fiat_usd_account = get_account(fiat_usd_account.guid)
-  fiat_balance = Money.from_cents(fiat_usd_account.platform_balance, 'USD')
+  customer_fiat_usd_account = get_account(customer_fiat_usd_account.guid)
+  fiat_balance = Money.from_cents(customer_fiat_usd_account.platform_balance, 'USD')
   unless fiat_balance == usd_quantity
     raise BadResultError,
           "Fiat USD account has an unexpected balance: #{fiat_balance}"
@@ -565,26 +621,25 @@ begin
     #
     # Transfer crypto
 
+    wait_for_expected_account_balance(crypto_accounts[asset], trade.receive_amount)
+
     crypto_account = get_account(crypto_accounts[asset].guid)
     crypto_balance = Money.from_cents(crypto_account.platform_balance, asset)
-
-    raise BadResultError, "Crypto #{asset} account has an unexpected balance: #{crypto_balance}" if crypto_balance.zero?
 
     external_wallet = get_external_wallet(crypto_wallets[asset].guid)
 
     quote = create_quote(customer, 'crypto_transfer', 'withdrawal', deliver_amount: crypto_balance.cents, asset: asset)
-    transfer = create_transfer(quote, 'crypto', external_wallet)
+    transfer = create_transfer(quote, 'crypto', external_wallet: external_wallet)
 
     wait_for_transfer_created(transfer)
 
     #
     # Check crypto balances
 
+    wait_for_expected_account_balance(crypto_accounts[asset], 0)
+
     crypto_account = get_account(crypto_accounts[asset].guid)
     crypto_balance = Money.from_cents(crypto_account.platform_balance, asset)
-    unless crypto_balance.zero?
-      raise BadResultError, "Crypto #{asset} account has an unexpected balance: #{crypto_balance}"
-    end
 
     LOGGER.info("Crypto #{asset} account has the expected balance: #{crypto_balance}")
   end

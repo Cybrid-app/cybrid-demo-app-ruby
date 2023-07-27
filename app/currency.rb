@@ -71,7 +71,7 @@ usdc_ste = {
   name: 'USDC (STE)',
   symbol: '$',
   subunit: 'cents',
-  subunit_to_unit: 1_0_000_000,
+  subunit_to_unit: 10_000_000,
   separator: '.',
   delimiter: ','
 }
