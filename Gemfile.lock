@@ -1,14 +1,16 @@
 GEM
   remote: https://rubygems.org/
   specs:
+    base64 (0.1.1)
     concurrent-ruby (1.2.2)
-    cybrid_api_bank_ruby (0.81.0)
+    cybrid_api_bank_ruby (0.94.23)
       typhoeus (~> 1.0, >= 1.0.1)
     diff-lcs (1.5.0)
     dotenv (2.8.1)
     ethon (0.16.0)
       ffi (>= 1.15.0)
-    faraday (2.7.10)
+    faraday (2.7.11)
+      base64
       faraday-net_http (>= 2.0, < 3.1)
       ruby2_keywords (>= 0.0.4)
     faraday-net_http (3.0.2)

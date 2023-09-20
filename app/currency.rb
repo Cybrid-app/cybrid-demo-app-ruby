@@ -76,6 +76,27 @@ usdc_ste = {
   delimiter: ','
 }
 
+bitcoin_cash = {
+  iso_code: 'BCH',
+  name: 'Bitcoin Cash',
+  symbol: 'Ƀ',
+  subunit: 'satoshi',
+  subunit_to_unit: 100_000_000,
+  separator: '.',
+  delimiter: ','
+}
+
+litecoin = {
+  iso_code: 'LTC',
+  name: 'Litecoin',
+  symbol: 'Ł',
+  subunit: 'litoshi',
+  subunit_to_unit: 100_000_000,
+  separator: '.',
+  delimiter: ','
+}
+
+
 Money::Currency.register(bitcoin)
 Money::Currency.register(ethereum)
 Money::Currency.register(solana)
@@ -83,3 +104,5 @@ Money::Currency.register(usdc)
 Money::Currency.register(usdc_sol)
 Money::Currency.register(usdc_pol)
 Money::Currency.register(usdc_ste)
+Money::Currency.register(bitcoin_cash)
+Money::Currency.register(litecoin)
