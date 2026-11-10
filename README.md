@@ -1,3 +1,8 @@
+> [!WARNING]
+> **This demo app is deprecated and no longer maintained.** It's built on outdated Cybrid API clients and won't get further updates or security fixes. This repository will be archived.
+>
+> To integrate with Cybrid, use the API reference at https://docs.cybrid.xyz and one of the supported clients for Python, Ruby, TypeScript, Angular or Swift.
+
 # cybrid-demo-app-ruby
 
 This project is a demo application designed to illustrate how to integrate and use the Cybrid Bank API Ruby client.
